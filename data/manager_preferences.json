@@ -1,0 +1,13 @@
+{
+  "_note": "Keys are the manager-facing opt-in menu (Target workflow step 1), not the 8-value trigger_type taxonomy used by nudge_interaction_history.csv. index.html's TRIGGER_MENU maps one onto the other. This file previously mixed both granularities.",
+  "_menu_keys": ["custom_reminders", "hris_milestones", "budget_expiry", "recognition_gaps", "third_party"],
+  "emp010": { "enabled_triggers": [] },
+  "emp030": {
+    "enabled_triggers": [
+      "custom_reminders",
+      "hris_milestones",
+      "budget_expiry",
+      "recognition_gaps"
+    ]
+  }
+}

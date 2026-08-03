@@ -1,0 +1,19 @@
+{
+  "weights": { "urgency": 0.35, "acceptance_weight": 0.35, "impact": 0.30 },
+  "baseline_frequency_cap": { "count": 2, "days": 3 },
+  "adaptive_bands": [1, 2, 3],
+  "ema_decay_rate": 0.8,
+  "override_threshold": 0.92,
+  "bundling_cap": { "min": 1, "max": 3 },
+  "min_interactions_for_adaptive": 3,
+  "impact_table": {
+    "hris_new_hire": 0.4,
+    "hris_anniversary": 0.5,
+    "hris_reporting_change": 0.3,
+    "budget_expiry": 0.3,
+    "custom_reminder": 0.6,
+    "opportunity_benchmark_gap": 0.7,
+    "opportunity_recipient_neglect": 0.8,
+    "opportunity_corevalue_narrowness": 0.5
+  }
+}

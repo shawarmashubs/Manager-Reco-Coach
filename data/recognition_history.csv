@@ -1,0 +1,4 @@
+sender,recipient,text,core_value,monetary_flag,amount,boosted,timestamp,relationship_type
+emp030,emp021,"Jamie closed the Meridian account two weeks early and looped in support before go-live so there were zero surprises.",Ownership,true,50,false,2026-05-12,direct_report
+emp030,emp050,"Alex walked a frustrated customer back from cancelling by digging into the actual root cause instead of just offering a discount.",Customer Obsession,true,50,false,2026-06-03,direct_report
+emp030,emp021,"Jamie mentored the new hire through their first full pipeline review without being asked.",Ownership,false,0,false,2026-07-01,direct_report

@@ -1,0 +1,9 @@
+employee_id,name,email,manager_id,department,title,hire_date,employment_status,last_manager_change_date
+emp099,Jordan Reyes,jordan.reyes@acme-robotics-demo.com,,Executive,CEO,2018-01-01,active,2018-01-01
+emp010,Priya Nair,priya.nair@acme-robotics-demo.com,emp099,Engineering,Engineering Manager,2022-01-15,active,2022-01-15
+emp001,Sam Okafor,sam.okafor@acme-robotics-demo.com,emp010,Engineering,Software Engineer II,2025-03-10,active,2025-03-10
+emp030,Marcus Chen,marcus.chen@acme-robotics-demo.com,emp040,Sales,Sales Manager,2021-04-01,active,2021-04-01
+emp040,Elena Ruiz,elena.ruiz@acme-robotics-demo.com,emp099,Sales,VP of Sales,2019-01-01,active,2019-01-01
+emp020,Diego Fernandez,diego.fernandez@acme-robotics-demo.com,emp030,Sales,Account Executive,2023-06-01,active,2023-06-01
+emp021,Jamie Park,jamie.park@acme-robotics-demo.com,emp030,Sales,Account Executive,2024-02-01,active,2023-06-01
+emp050,Alex Torres,alex.torres@acme-robotics-demo.com,emp030,Sales,Account Executive,2023-01-01,active,2023-06-01
