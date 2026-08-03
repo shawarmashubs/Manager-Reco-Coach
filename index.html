@@ -560,8 +560,9 @@ const ROSTER = [
   { employee_id: "emp051", name: "Nina Kowalski", email: "nina.kowalski@acme-robotics-demo.com", manager_id: "emp030", department: "Sales", title: "Account Executive", hire_date: "2026-07-05", employment_status: "active", last_manager_change_date: "2026-07-05" },
   // Five-year anniversary on 2026-08-06, so it lands on day 4.
   { employee_id: "emp052", name: "Tobias Lang", email: "tobias.lang@acme-robotics-demo.com", manager_id: "emp030", department: "Sales", title: "Senior Account Executive", hire_date: "2021-08-06", employment_status: "active", last_manager_change_date: "2021-08-06" },
-  // Moved under Marcus recently, so the reporting-change milestone is live now.
-  { employee_id: "emp022", name: "Wesley Adeyemi", email: "wesley.adeyemi@acme-robotics-demo.com", manager_id: "emp030", department: "Sales", title: "Sales Team Lead", hire_date: "2022-03-14", employment_status: "active", last_manager_change_date: "2026-07-27" },
+  // Moves under Marcus on day 2 of the run, so the reporting-change trigger
+  // is caught at its peak rather than already deep in its decay tail.
+  { employee_id: "emp022", name: "Wesley Adeyemi", email: "wesley.adeyemi@acme-robotics-demo.com", manager_id: "emp030", department: "Sales", title: "Sales Team Lead", hire_date: "2022-03-14", employment_status: "active", last_manager_change_date: "2026-08-04" },
   // Skip-level for Marcus: two hops down via Wesley. 60-day mark on 2026-08-07.
   { employee_id: "emp053", name: "Rosa Iglesias", email: "rosa.iglesias@acme-robotics-demo.com", manager_id: "emp022", department: "Sales", title: "Sales Development Rep", hire_date: "2026-06-08", employment_status: "active", last_manager_change_date: "2026-06-08" },
   { employee_id: "emp054", name: "Kenji Watanabe", email: "kenji.watanabe@acme-robotics-demo.com", manager_id: "emp022", department: "Sales", title: "Sales Development Rep", hire_date: "2025-02-03", employment_status: "active", last_manager_change_date: "2025-02-03" },
@@ -648,25 +649,49 @@ const SCORING_CONFIG = {
        open     — ramps up with days-open, capped
        point    — flat base value
      ramp_days / window_days is the span over which the ramp completes. */
+  /* Three shapes:
+
+       peak     — a dated event. Climbs over lead_days as the date nears,
+                  sits at maximum on the day itself AND the following day,
+                  then decays at twice the rate it climbed.
+       deadline — a cut-off, not an event. Climbs to the date; past it the
+                  thing is simply gone, so expiry retires it.
+       open     — no date at all. Climbs with days-open, capped.
+
+     These were originally "point" (a flat value forever), which was wrong in
+     both directions: a 10-year anniversary a week out could not be a
+     candidate at all, and a milestone three days stale still scored exactly
+     as high as it did on the day. Two days at the peak because recognition
+     the morning after still lands; a week after reads as an afterthought.
+     Decaying at twice the climb rate encodes that asymmetry: anticipation
+     builds slowly, relevance drops fast. */
   urgency_shapes: {
-    custom_reminder:               { shape: "deadline", window_days: 3,   base: 0.55 },
-    budget_expiry:                 { shape: "deadline", window_days: 21,  base: 0.25 },
-    hris_new_hire:                 { shape: "point",    base: 0.70 },
-    hris_anniversary:              { shape: "point",    base: 0.75 },
-    hris_reporting_change:         { shape: "point",    base: 0.55 },
+    // The manager picked this date themselves, so the run-up is short.
+    custom_reminder:               { shape: "peak",     lead_days: 2,  base: 0.55 },
+    budget_expiry:                 { shape: "deadline", window_days: 21, base: 0.25 },
+    hris_new_hire:                 { shape: "peak",     lead_days: 5,  base: 0.35 },
+    hris_anniversary:              { shape: "peak",     lead_days: 7,  base: 0.35 },
+    // Only ever detectable after the fact, so the lead-in is unused; the long
+    // lead just gives it a gentle decay rather than a cliff.
+    hris_reporting_change:         { shape: "peak",     lead_days: 10, base: 0.30 },
     opportunity_recipient_neglect: { shape: "open",     ramp_days: 180, floor: 0.20 },
     opportunity_benchmark_gap:     { shape: "open",     ramp_days: 120, floor: 0.15 },
     opportunity_corevalue_narrowness: { shape: "open",  ramp_days: 240, floor: 0.10 }
   },
+  // Days the peak sits at maximum: the event day plus the day after.
+  peak_days: 2,
 
   /* How long a candidate stays live before it stops being worth surfacing.
      A sprint-close reminder from three weeks ago is noise, not a nudge. */
+  /* Measured from the event date for dated triggers. Each one outlasts its
+     own decay tail by a day or two, so a candidate is retired because it has
+     stopped mattering rather than while it still scores something. */
   expiry_days: {
     custom_reminder: 5,
     budget_expiry: 30,
-    hris_new_hire: 10,
-    hris_anniversary: 7,
-    hris_reporting_change: 14,
+    hris_new_hire: 6,
+    hris_anniversary: 8,
+    hris_reporting_change: 12,
     opportunity_recipient_neglect: 60,
     opportunity_benchmark_gap: 45,
     opportunity_corevalue_narrowness: 60
@@ -1346,6 +1371,33 @@ function findTodaysReminder(managerId, recipientIds) {
   return matched || todays[0];
 }
 
+/* Dated nudges can now arrive before, on, or after their event, so the copy
+   has to say which. It previously opened with "Milestone today" regardless,
+   which became a lie the moment detection started opening a week early --
+   and copy asserting a fact that is not true is the exact failure this
+   project bans in Draft generation. */
+function eventTiming(candidate, today) {
+  const eventDate = candidate.deadline || candidate.opened_on;
+  if (!eventDate) return { offset: 0, phrase: "today" };
+  const offset = daysBetween(eventDate, today);
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  let phrase;
+  if (offset === 0) phrase = "today";
+  else if (offset === 1) phrase = "yesterday";
+  else if (offset === -1) phrase = "tomorrow";
+  else if (offset < -1 && offset >= -6) phrase = "on " + dayNames[isoToDate(eventDate).getDay()];
+  else if (offset < -6) phrase = "in " + (-offset) + " days";
+  else phrase = offset + " days ago";
+  return { offset: offset, phrase: phrase };
+}
+
+function ordinal(n) {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return n + "th";
+  const rem10 = n % 10;
+  return n + (rem10 === 1 ? "st" : rem10 === 2 ? "nd" : rem10 === 3 ? "rd" : "th");
+}
+
 // Returns { eyebrow, headline, cta } -- warm, specific, and grounded.
 function buildNudgeCopy(evalCase) {
   const today = SIM_TODAY;
@@ -1442,22 +1494,54 @@ function buildNudgeCopy(evalCase) {
     }
 
     case "hris_anniversary": {
-      const years = recipients[0] ? monthsBetween(recipients[0].hire_date, today) / 12 : 0;
-      const whole = Math.round(years);
+      const years = evalCase.meta && evalCase.meta.years
+        ? evalCase.meta.years
+        : Math.round(monthsBetween(recipients[0].hire_date, today) / 12);
+      const when = eventTiming(evalCase, today);
+      const nth = ordinal(years);
+      if (when.offset < 0) {
+        return {
+          eyebrow: "Coming up",
+          headline: who + " hits " + years + " years at " + CLIENT_CONFIG.company_name + " " + when.phrase +
+            ". Worth getting ahead of.",
+          cta: "Celebrate " + whoFirst
+        };
+      }
+      if (when.offset === 0) {
+        return {
+          eyebrow: "Milestone today",
+          headline: "Today is " + who + "'s " + nth + " year at " + CLIENT_CONFIG.company_name + ". Worth marking properly.",
+          cta: "Celebrate " + whoFirst
+        };
+      }
       return {
-        eyebrow: "Milestone today",
-        headline: "Today is " + who + "'s " + whole + (whole === 1 ? "st" : whole === 2 ? "nd" : whole === 3 ? "rd" : "th") +
-          " year at " + CLIENT_CONFIG.company_name + ". Worth marking properly.",
+        eyebrow: "Just passed",
+        headline: who + " passed " + years + " years at " + CLIENT_CONFIG.company_name + " " + when.phrase +
+          ". Still worth marking.",
         cta: "Celebrate " + whoFirst
       };
     }
 
-    case "hris_new_hire":
+    case "hris_new_hire": {
+      const mark = evalCase.meta && evalCase.meta.mark ? evalCase.meta.mark : 30;
+      const markPhrase = mark === 30 ? "first month" : mark === 60 ? "first two months" : "first three months";
+      const when = eventTiming(evalCase, today);
+      if (when.offset < 0) {
+        return {
+          eyebrow: "Coming up",
+          headline: who + " wraps their " + markPhrase + " with you " + when.phrase +
+            ". Early recognition sets the tone for everything after it.",
+          cta: "Welcome " + whoFirst
+        };
+      }
       return {
         eyebrow: "New on your team",
-        headline: who + " just wrapped their first month with you. Early recognition sets the tone for everything after it.",
+        headline: who + (when.offset <= 1 ? " just wrapped their " : " wrapped their ") + markPhrase +
+          " with you" + (when.offset > 1 ? " " + when.phrase : "") +
+          ". Early recognition sets the tone for everything after it.",
         cta: "Welcome " + whoFirst
       };
+    }
 
     case "hris_reporting_change":
       return {
@@ -1975,7 +2059,9 @@ function check_scheduled_reminders(managerId, today) {
   const out = [];
   RUNTIME_REMINDERS.forEach(function (r, i) {
     if (r.manager_id !== managerId) return;
-    if (daysBetween(r.date, today) < 0) return;   // not yet due
+    // Detect during the run-up too, so a reminder set for Friday can start
+    // climbing on Wednesday instead of appearing from nothing on the day.
+    if (daysBetween(r.date, today) < -leadDaysFor("custom_reminder")) return;
     /* A Boost reminder is NOT a nudge and never becomes a candidate. It is
        a follow-up on a recognition the manager already sent, so it must not
        compete for a bundling slot, must not consume the volume cap, and must
@@ -2031,47 +2117,72 @@ function check_hris_milestones(managerId, today) {
     const rel = getRelationshipType(managerId, p.employee_id);
     const isTeam = p.manager_id === managerId || rel === "direct_report";
 
+    /* Detection opens LEAD_DAYS before the date and closes once the decay
+       tail has run out, so a candidate exists while its urgency is still
+       climbing. Previously the window only opened on the day itself, which
+       made the run-up unreachable: a 10-year anniversary a week away could
+       not be a candidate at all, however much it deserved to be queued. */
     const tenureDays = daysBetween(p.hire_date, today);
     [30, 60, 90].forEach(function (mark) {
+      const markDate = addDays(p.hire_date, mark);
+      const offset = daysBetween(markDate, today);
+      const lead = leadDaysFor("hris_new_hire");
       // Fuzzy timing on purpose: HRIS sync is batch, so exact-day precision
-      // would be a promise the data cannot keep. A 3-day window reads as
-      // "this week" rather than "today".
-      if (isTeam && tenureDays >= mark && tenureDays < mark + 3) {
+      // would be a promise the data cannot keep. The copy says "first month",
+      // never "today".
+      if (isTeam && offset >= -lead && offset <= SCORING_CONFIG.expiry_days.hris_new_hire) {
         out.push(makeCandidate({
           manager_id: managerId,
           trigger_type: "hris_new_hire",
           recipient_ids: [p.employee_id],
           tag: "d" + mark,
-          opened_on: addDays(p.hire_date, mark),
+          opened_on: addDays(markDate, -lead),
+          deadline: markDate,
           meta: { mark: mark }
         }));
       }
     });
 
-    const years = Math.floor(tenureDays / 365);
-    if (isTeam && years >= 1) {
-      const anniversary = addDays(p.hire_date, years * 365);
-      const since = daysBetween(anniversary, today);
-      if (since >= 0 && since < 3) {
+    /* Anniversaries land on a calendar date, not every 365 days. The old
+       multiple-of-365 arithmetic drifted a day per leap year, which after
+       eight years puts a "10 year anniversary" on the wrong date. Check this
+       calendar year's and next year's, so the window can open in December for
+       a January date. */
+    if (isTeam) {
+      const hire = isoToDate(p.hire_date);
+      const lead = leadDaysFor("hris_anniversary");
+      [0, 1].forEach(function (yearOffset) {
+        const annYear = isoToDate(today).getFullYear() + yearOffset;
+        const annDate = dateToISO(new Date(annYear, hire.getMonth(), hire.getDate()));
+        const years = annYear - hire.getFullYear();
+        if (years < 1) return;
+        const offset = daysBetween(annDate, today);
+        if (offset < -lead || offset > SCORING_CONFIG.expiry_days.hris_anniversary) return;
         out.push(makeCandidate({
           manager_id: managerId,
           trigger_type: "hris_anniversary",
           recipient_ids: [p.employee_id],
           tag: "y" + years,
-          opened_on: anniversary,
+          opened_on: addDays(annDate, -lead),
+          deadline: annDate,
           meta: { years: years }
         }));
-      }
+      });
     }
 
+    /* The one dated trigger with no run-up: a reporting change is only
+       knowable once HRIS says it happened, so this window opens on the day
+       and the curve starts at its peak rather than climbing to it. */
     const sinceMove = daysBetween(p.last_manager_change_date, today);
-    if (isTeam && sinceMove >= 0 && sinceMove <= 14 && p.last_manager_change_date !== p.hire_date) {
+    if (isTeam && sinceMove >= 0 && sinceMove <= SCORING_CONFIG.expiry_days.hris_reporting_change &&
+        p.last_manager_change_date !== p.hire_date) {
       out.push(makeCandidate({
         manager_id: managerId,
         trigger_type: "hris_reporting_change",
         recipient_ids: [p.employee_id],
         tag: p.last_manager_change_date,
         opened_on: p.last_manager_change_date,
+        deadline: p.last_manager_change_date,
         meta: {}
       }));
     }
@@ -2464,7 +2575,37 @@ function urgencyFor(candidate, today) {
     return { value: clamp01(ramped), shape: "open", note: open + "d open" };
   }
 
-  return { value: shape.base, shape: "point", note: "flat" };
+  if (shape.shape === "peak") {
+    /* offset: negative before the event, 0 on the day, positive after.
+         -lead .. -1   climbing   base -> 1
+          0 .. +1      at maximum (peak_days)
+          +2 onward    falling at twice the climb rate, to zero */
+    const eventDate = candidate.deadline || candidate.opened_on;
+    const offset = daysBetween(eventDate, today);
+    const lead = shape.lead_days;
+    const climbPerDay = (1 - shape.base) / lead;
+    const peakSpan = SCORING_CONFIG.peak_days - 1;   // last day still at maximum
+
+    if (offset < 0) {
+      const value = clamp01(shape.base + climbPerDay * (lead + offset));
+      return { value: value, shape: "peak", note: (-offset) + "d until, climbing" };
+    }
+    if (offset <= peakSpan) {
+      return { value: 1, shape: "peak", note: offset === 0 ? "today" : "yesterday, still peak" };
+    }
+    const daysPast = offset - peakSpan;
+    const value = clamp01(1 - climbPerDay * 2 * daysPast);
+    return { value: value, shape: "peak", note: offset + "d ago, decaying" };
+  }
+
+  return { value: shape.base || 0.5, shape: "flat", note: "no shape matched" };
+}
+
+// How early a dated trigger starts being detected, so the climb has somewhere
+// to happen. Detection and the urgency curve read the same number.
+function leadDaysFor(triggerType) {
+  const shape = SCORING_CONFIG.urgency_shapes[triggerType];
+  return shape && shape.lead_days ? shape.lead_days : 0;
 }
 
 function impactFor(candidate, today) {
@@ -5693,7 +5834,7 @@ function renderEvalsSection() {
   body.appendChild(limitHeading);
   const limitList = document.createElement("ul");
   [
-    "Handles only the two Prototype Scope entry conditions (cold-start custom-reminder path, established-manager Opportunity path) plus one added auth-failure case -- the remaining 5 eval cases from the Design PRD's eval plan (decaying-penalty override, adaptive frequency-cap band, multi-recipient partial failure, relationship ineligibility, thin-input branching) and the Boost-reminder's actual future-dated firing are out of scope for this build.",
+    "Handles only the two Prototype Scope entry conditions (cold-start custom-reminder path, established-manager Opportunity path) plus one added auth-failure case -- the remaining 5 eval cases from the Design PRD's eval plan (decaying-penalty override, adaptive frequency-cap band, multi-recipient partial failure, relationship ineligibility, thin-input branching) are out of scope for this build. The Boost-reminder mechanism IS now built end to end, including its future-dated firing against the simulated clock.",
     "Manager authentication is a mocked deterministic stub (a simulate_auth_failure flag per case) standing in for a real Teams SSO / identity-provider call -- it never calls a real auth service, and only models the both-attempts-failed case, not a partial or intermittent failure.",
     "Budget is a single in-memory ledger reset only by the Reset synthetic data button -- not a real Achievers API, and does not persist across a real page reload.",
     "Opportunity's open-ended novel-signal-type reasoning was intentionally removed from this build (Design PRD rows 19 and 21) -- it now classifies strictly into the three known signal types.",
