@@ -3463,10 +3463,23 @@ async function regenerateDraft(caseId) {
   refreshCase(caseId);
 }
 
-// Deterministic stub standing in for a real Teams SSO / identity-provider
-// call. Per Design PRD step 10a: a failure retries once, automatically and
-// silently -- only if that retry also fails does the manager ever see
-// anything. simulate_auth_failure models "both attempts failed."
+/* Deterministic stub standing in for a real Teams SSO / identity-provider
+   call. Design PRD step 10a specifies a silent automatic retry, with the
+   manager only seeing an error if that retry also fails.
+
+   That retry is NOT implemented here, and this stub does not model it. It
+   returns one hardcoded answer, and simulate_auth_failure is the "both
+   attempts already failed" end state, not a first failure. The distinction
+   matters because the run log used to announce "AUTH FAILED after silent
+   retry", which read as evidence of a retry that never ran. The log line
+   now says what actually happened.
+
+   Second known limitation, called out so it is not mistaken for coverage:
+   failure is a property of the CASE, not of timing. Only one thing in the
+   app carries the flag (eval fixture 6), so a generated nudge can never hit
+   this branch and no soak run can reach it. In the real product a session
+   expires on a clock and any submission can fail. Making that testable
+   needs a "next submission fails auth" toggle rather than a per-case flag. */
 function authenticateManager(evalCase) {
   if (!evalCase.simulate_auth_failure) return { ok: true };
   return { ok: false };
@@ -3522,7 +3535,7 @@ async function submitCase(caseId) {
     const auth = authenticateManager(evalCase);
     if (!auth.ok) {
       state.status = "AUTH_ERROR";
-      addLogEntry({ caseId: caseId, stage: "auth", action: "AUTH FAILED after silent retry -- draft saved, manual-send link shown" });
+      addLogEntry({ caseId: caseId, stage: "auth", action: "AUTH FAILED (stub returns the both-attempts-failed end state; the silent retry itself is not simulated) -- draft saved, manual-send link shown" });
       refreshCase(caseId);
       return;
     }
