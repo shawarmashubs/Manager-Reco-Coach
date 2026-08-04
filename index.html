@@ -407,6 +407,10 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .empty .headline { font-size: var(--fs-3); font-weight: 700; color: var(--ink); margin-bottom: var(--sp-2); }
 
 .error-note { padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-sm); border: var(--border-w) solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--danger); font-size: var(--fs-1); }
+/* Deliberately not styled as an error or a warning. The agent disagreeing
+   with a nudge it already sent is information, not a fault, and the manager
+   is free to carry on -- so this reads as a quiet aside, not a red wall. */
+.advisory-note { padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-3); border-radius: var(--radius-sm); border: var(--border-w) solid var(--line); background: var(--bg-inset); color: var(--ink-2); font-size: var(--fs-0); line-height: 1.45; }
 
 .citation-chip { display: inline-flex; padding: 2px 10px; border-radius: 999px; background: var(--chip); color: var(--ink-2); font-size: var(--fs-0); font-family: var(--font-mono); margin: 2px 4px 2px 0; }
 
@@ -885,6 +889,21 @@ const MANAGER_PREFERENCES = {
   emp030: { enabled_triggers: ["custom_reminders", "hris_milestones", "budget_expiry", "recognition_gaps"] }
 };
 
+/* Whether a manager has been through setup, tracked SEPARATELY from whether
+   they have anything enabled. These look identical if you only count
+   opt-ins -- both are zero -- but they are opposite intents:
+
+     never set up      -> show the first-run welcome, suggest defaults
+     set up, all off   -> they turned everything off on purpose, respect it
+
+   Collapsing the two meant a manager who unchecked every card and saved was
+   dropped straight back into onboarding with the recommended cards re-ticked,
+   which reads as the save having been ignored. */
+const MANAGER_SETUP_DONE = {
+  emp010: false,
+  emp030: true
+};
+
 /* The two personas the profile switcher offers. Ordered deliberately: the
    not-set-up manager first, since that is where the demo starts. The blurb is
    what the switcher shows under each name; everything else about a profile is
@@ -933,11 +952,27 @@ const EVAL_CASES = [
     name: "cross_bucket_blending",
     manager_id: "emp030",
     trigger_type: "opportunity_recipient_neglect",
-    recipient_ids: ["emp020", "emp040"],
-    manager_input_text: "Diego closed out Q2 strong and Elena backed the push to get the Meridian renewal prioritized -- really appreciate both of you.",
+    /* One nudge, one recipient, and it has to be the one the data actually
+       supports. Elena has never received a recognition from anyone, which is
+       an unambiguous neglect signal. Diego is the opposite: five recognitions
+       on record, the most recent three weeks before the seeded today. Naming
+       Diego here asked the Opportunity agent to call a healthy pattern a gap,
+       and it correctly refused -- which is what produced the "on a second look
+       there is no gap" dead end. The locked Agent loop says this agent
+       "produces a single candidate (recipient, signal type, supporting data)",
+       so a two-recipient neglect nudge was off-spec as well as unsupported. */
+    recipient_ids: ["emp040"],
+    /* NOT part of the nudge. Design PRD Scene 2 has the manager adding a
+       second, cross-bucket recipient themselves at the draft step. In the
+       thread that is a real click; here it stands in for that click so the
+       unattended harness still exercises Style/Tone's cross-bucket blend
+       (leader with zero history + direct report with real history). Read
+       only when there is no live manager session driving the case. */
+    added_recipient_ids: ["emp020"],
+    manager_input_text: "Elena backed the push to get the Meridian renewal prioritized and Diego closed out Q2 strong -- really appreciate both of you.",
     monetary_default: false,
-    description: "Established manager Marcus accepts a gap nudge for Diego and adds his own manager Elena (leader bucket, zero history) to the same recognition, sent as a non-monetary shoutout.",
-    expected_behavior: "Style/Tone blends real direct-report examples for Diego's portion with the generic tone fallback for Elena's portion in one coherent draft -- not a refusal or a single-bucket pick."
+    description: "Established manager Marcus accepts a gap nudge for Elena, his own manager (leader bucket, zero recognition history), and adds his direct report Diego to the same recognition, sent as a non-monetary shoutout.",
+    expected_behavior: "Style/Tone blends the generic tone fallback for Elena's portion with real direct-report examples for Diego's portion in one coherent draft -- not a refusal or a single-bucket pick."
   },
   {
     case_id: 3,
@@ -1812,12 +1847,19 @@ function seedPreferences() {
 }
 
 let RUNTIME_PREFERENCES = seedPreferences();
+let RUNTIME_SETUP_DONE = Object.assign({}, MANAGER_SETUP_DONE);
+
+/* Bumped by every reset. Anything that kicks off an async runDay captures the
+   value first and bails on resolve if it has moved, so a day still in flight
+   when Reset is pressed cannot write the old world back over the new one. */
+let WORLD_GENERATION = 0;
 let ACTIVE_MANAGER_ID = DEMO_PROFILES[0].manager_id;
 
 function resetRuntimeState() {
   RUNTIME_BUDGET = Object.assign({}, BUDGET_RECORDS);
   RUNTIME_REMINDERS = CUSTOM_REMINDERS.slice();
   RUNTIME_PREFERENCES = seedPreferences();
+  RUNTIME_SETUP_DONE = Object.assign({}, MANAGER_SETUP_DONE);
   ONBOARDING_STATE = {};
   // Truncate anything the run appended, back to the seeded fixtures. Splicing
   // in place rather than reassigning, since these are consts other closures
@@ -1837,8 +1879,10 @@ function resetRuntimeState() {
   // Back to day one, which re-runs detection from scratch. Async now that
   // Opportunity judges at detection; render immediately so the panel is not
   // blank while it works, then again once the day has actually run.
+  const gen = ++WORLD_GENERATION;
   renderConsole();
   runDay(SIM_TODAY).then(function () {
+    if (gen !== WORLD_GENERATION) return;
     SELECTED_CASE_ID = openNudgeIdFor(ACTIVE_MANAGER_ID);
     renderConsole();
     if (typeof renderEvalsSection === "function") renderEvalsSection();
@@ -1871,11 +1915,25 @@ function isTriggerEnabled(managerId, triggerType) {
   return enabledTriggersFor(managerId).indexOf(entry.key) !== -1;
 }
 
+/* The single write path for opt-ins, and therefore the right place to make
+   them durable. Persisting here rather than at each call site means a future
+   caller cannot reintroduce the bug where a manager's change lived only in
+   memory and a reload quietly restored the old set. */
 function setTriggerEnabled(managerId, menuKey, on) {
   const prefs = RUNTIME_PREFERENCES[managerId] || (RUNTIME_PREFERENCES[managerId] = { enabled_triggers: [] });
   const at = prefs.enabled_triggers.indexOf(menuKey);
   if (on && at === -1) prefs.enabled_triggers.push(menuKey);
   if (!on && at !== -1) prefs.enabled_triggers.splice(at, 1);
+  persistWorld();
+}
+
+function hasCompletedSetup(managerId) {
+  return RUNTIME_SETUP_DONE[managerId] === true;
+}
+
+function markSetupComplete(managerId) {
+  RUNTIME_SETUP_DONE[managerId] = true;
+  persistWorld();
 }
 
 // Every case belonging to this manager, opt-in ignored.
@@ -1883,13 +1941,13 @@ function casesForManager(managerId) {
   return EVAL_CASES.filter(function (c) { return c.manager_id === managerId; });
 }
 
-// The subset that survives the opt-in filter, which is what the manager can
-// actually be shown.
-function eligibleCasesForManager(managerId) {
-  return casesForManager(managerId).filter(function (c) {
-    return isTriggerEnabled(managerId, c.trigger_type);
-  });
-}
+/* eligibleCasesForManager() used to live here: eval fixtures filtered by
+   opt-in, as though that made one showable. It did not -- a fixture is a
+   graded harness object that never passes through detection, Prioritization
+   or delivery, and the two callers that used it to pick what the manager's
+   thread should show are exactly how a test case ended up mid-flow in front
+   of a manager. Deleted rather than left unused, so it cannot be reached for
+   again. What the thread can show is deliveredFor() / openNudgeIdFor(). */
 
 // Statuses where a manager is actively in the middle of something. Reused
 // wherever "don't yank this out from under them" matters.
@@ -2376,6 +2434,34 @@ async function judgeOpportunity(managerId, signal, today) {
     addLogEntry({ caseId: today, stage: "opportunity", action: "endpoint error, fell back to threshold -- " + err.message });
     return verdict;
   }
+}
+
+/* The one key every reader and writer of a verdict agrees on. Existed only
+   inline before, in two places, which is how a lookup could quietly miss and
+   fall through to re-asking the agent. */
+function opportunityVerdictKey(caseLike) {
+  return candidateKey(caseLike.manager_id, caseLike.trigger_type, caseLike.recipient_ids, "");
+}
+
+/* The graded harness's stand-in for detection.
+
+   An eval fixture never passes through runDay(), so nothing has asked
+   Opportunity about it. Run All calls this FIRST, before any compose flow
+   starts, so the harness still exercises a real Opportunity call -- through
+   judgeOpportunity(), the single place the agent is ever invoked, writing to
+   the single cache every reader uses. What it must never do is run once a
+   manager is already mid-draft. That ordering is the entire bug this file
+   carried: the agent answered a question about work already in flight, and a
+   "no" threw that work away. */
+async function ensureOpportunityVerdict(evalCase) {
+  if (evalCase.trigger_type.indexOf("opportunity_") !== 0) return null;
+  const existing = OPPORTUNITY_VERDICTS[opportunityVerdictKey(evalCase)];
+  if (existing) return existing;
+  return judgeOpportunity(
+    evalCase.manager_id,
+    { type: evalCase.trigger_type, recipient_ids: evalCase.recipient_ids },
+    SIM_TODAY
+  );
 }
 
 async function detectCandidatesFor(managerId, today) {
@@ -2899,7 +2985,77 @@ async function runDay(today) {
     }
   }
   LAST_DAY_SUMMARY = summary;
+  checkInvariants();
   return summary;
+}
+
+/* ============================================================
+   INVARIANTS
+
+   Four rules this app broke, each of which produced a visible
+   contradiction in front of a manager. Cheap to state, cheap to
+   check, and silent until one is violated -- so a clean run
+   costs nothing and a regression announces itself in the Run
+   Log rather than at demo time.
+
+   These are guardrails, not a test suite: they catch the wiring
+   mistake that reintroduces the bug, not every possible defect.
+   Each fires once per condition per run to avoid flooding.
+   ============================================================ */
+const INVARIANTS_SEEN = {};
+
+function invariantFailed(id, message) {
+  if (INVARIANTS_SEEN[id]) return;
+  INVARIANTS_SEEN[id] = true;
+  addLogEntry({ caseId: SIM_TODAY, stage: "invariant", action: "BROKEN -- " + message });
+}
+
+function checkInvariants() {
+  CANDIDATES.forEach(function (c) {
+    if (c.trigger_type.indexOf("opportunity_") !== 0) return;
+
+    /* 1. Every opportunity nudge is about exactly one person. The nudge card
+       makes a claim per recipient; the agent only ever judges the candidate
+       it produced. More than one recipient means the card can assert
+       something no verdict backs -- which is what "Diego 2 months, Elena
+       none at all" was, with only Diego's half ever checked. */
+    if ((c.recipient_ids || []).length !== 1) {
+      invariantFailed("multi:" + c.case_id,
+        "opportunity candidate " + c.case_id + " has " + (c.recipient_ids || []).length +
+        " recipients; the agent judges one, so the card would claim more than was checked");
+    }
+
+    /* 2. Nothing reaches a manager without a settled verdict. If a delivered
+       candidate has none, some route skipped detection -- the exact gap that
+       let the agent be re-asked mid-draft. */
+    if (c.delivered_on && !OPPORTUNITY_VERDICTS[opportunityVerdictKey(c)]) {
+      invariantFailed("noverdict:" + c.case_id,
+        "candidate " + c.case_id + " was delivered with no Opportunity verdict stored");
+    }
+
+    /* 3. A "no" is never delivered. Only validated gaps become nudges; if a
+       rejected one reached the thread, Prioritization is ranking things
+       Opportunity turned down. */
+    const v = OPPORTUNITY_VERDICTS[opportunityVerdictKey(c)];
+    if (c.delivered_on && v && !v.candidate) {
+      invariantFailed("delivered-no:" + c.case_id,
+        "candidate " + c.case_id + " was delivered even though Opportunity judged it not a real gap");
+    }
+  });
+
+  /* 4. The thread shows delivered candidates, never a graded fixture. An
+     eval case in the manager's own thread is a test object wearing a live
+     nudge's clothes -- the root of the original dead end. Selecting one
+     from the dev case list is the deliberate exception and is not flagged
+     here, because that list sets the selection knowingly. */
+  const selected = SELECTED_CASE_ID;
+  if (selected !== null && EVAL_CASES.some(function (c) { return c.case_id === selected; })) {
+    const state = CASE_STATE[selected];
+    if (state && IN_PROGRESS_STATUSES.indexOf(state.status) !== -1) {
+      invariantFailed("fixture-live:" + selected,
+        "eval fixture " + selected + " is mid-flow in the manager's thread; fixtures are harness objects, not deliverable nudges");
+    }
+  }
 }
 
 let LAST_DAY_SUMMARY = [];
@@ -2951,6 +3107,7 @@ function persistWorld() {
     localStorage.setItem(WORLD_KEY, JSON.stringify({
       today: SIM_TODAY,
       prefs: RUNTIME_PREFERENCES,
+      setupDone: RUNTIME_SETUP_DONE,
       budget: RUNTIME_BUDGET,
       candidates: CANDIDATES,
       recognitions: RECOGNITION_HISTORY.length,
@@ -2971,7 +3128,14 @@ function restoreWorld() {
   try { saved = JSON.parse(localStorage.getItem(WORLD_KEY)); } catch (e) { return false; }
   if (!saved || !saved.today) return false;
   SIM_TODAY = saved.today;
+  /* Both of these have to restore even when they look "empty". `prefs` is an
+     object so it is always truthy, but setupDone genuinely can be all-false
+     and an every-value-falsy object is still an object, so a plain truthiness
+     guard is safe here too. What is NOT safe is skipping the restore and
+     falling back to the seed, which is how "I turned everything off" came
+     back as "you have never set this up". */
   if (saved.prefs) RUNTIME_PREFERENCES = saved.prefs;
+  if (saved.setupDone) RUNTIME_SETUP_DONE = Object.assign({}, MANAGER_SETUP_DONE, saved.setupDone);
   if (saved.budget) RUNTIME_BUDGET = saved.budget;
   if (saved.candidates) CANDIDATES = saved.candidates;
   if (saved.reminders) RUNTIME_REMINDERS = saved.reminders;
@@ -3033,6 +3197,10 @@ function acceptNudge(caseId) {
   };
   logNudgeOutcome(evalCase, "accepted");
   addLogEntry({ caseId: caseId, stage: "nudge", action: "ACCEPTED -- manager opened the input screen" });
+  /* The moment that matters most: a manager has just committed to something.
+     If what they committed to should never have been in front of them, this
+     is where it shows up in the log, while there is still a run to inspect. */
+  checkInvariants();
   refreshCase(caseId);
 }
 
@@ -3090,57 +3258,110 @@ function describeAcceptance(managerId, triggerType) {
     : "still cold, " + a.n + "/" + SCORING_CONFIG.min_interactions_for_adaptive;
 }
 
+/* Un-log the most recent outcome of a given kind for this trigger type.
+
+   Accepting a nudge is a real manager action and gets logged the moment it
+   happens, which is right. What was wrong was leaving it logged when the run
+   behind it then produced nothing at all -- the acceptance-weight EMA and the
+   manager-level cap band both read this log, so a system-side failure was
+   quietly teaching the ranking layer that this trigger type works. Nothing
+   was sent; nothing should have been counted.
+
+   Deliberately reversible rather than a compensating negative entry: a
+   retry that succeeds re-logs the accept, and the manager ends up with
+   exactly one, which is what actually happened. A negative entry would have
+   left a permanent dent for an outage the manager never even saw. */
+function revokeNudgeOutcome(candidate, outcome) {
+  if (!candidate || !candidate.trigger_type) return false;
+  for (let i = NUDGE_INTERACTION_HISTORY.length - 1; i >= 0; i--) {
+    const row = NUDGE_INTERACTION_HISTORY[i];
+    if (row.manager_id === candidate.manager_id &&
+        row.trigger_type === candidate.trigger_type &&
+        row.outcome === outcome) {
+      NUDGE_INTERACTION_HISTORY.splice(i, 1);
+      addLogEntry({
+        caseId: candidate.case_id,
+        stage: "outcome log",
+        action: "REVOKED " + outcome + " -> " + candidate.trigger_type +
+          " (nothing was produced or sent; acceptance-weight back to " +
+          describeAcceptance(candidate.manager_id, candidate.trigger_type) + ")"
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 async function runAgentsForCase(caseId) {
   const evalCase = findCase(caseId);
   const prior = CASE_STATE[caseId] || {};
   const mode = prior.mode || evalCase.mode || "COACHING";
   const managerInput = prior.managerInput !== undefined ? prior.managerInput : evalCase.manager_input_text;
   const monetary = prior.monetary !== undefined ? prior.monetary : evalCase.monetary_default;
-  const recipientIds = prior.recipientIds || evalCase.recipient_ids.slice();
-  const state = { stages: {}, citations: [], status: "RUNNING", managerInput: managerInput, mode: mode, monetary: monetary, recipientIds: recipientIds, currentDraftText: prior.currentDraftText || "", regenCount: prior.regenCount || 0 };
+  /* prior.recipientIds exists whenever a real manager session is driving this
+     case, and it is authoritative -- chips they kept, removed, or added.
+     Only the unattended harness falls through to the fixture, and only the
+     harness reads added_recipient_ids, which stands in for the recipient a
+     manager adds by hand at the draft step. */
+  const recipientIds = prior.recipientIds ||
+    evalCase.recipient_ids.concat(evalCase.added_recipient_ids || []);
+  const state = { stages: {}, citations: [], status: "RUNNING", managerInput: managerInput, mode: mode, monetary: monetary, recipientIds: recipientIds, currentDraftText: prior.currentDraftText || "", regenCount: prior.regenCount || 0, acceptRevoked: prior.acceptRevoked || false };
   CASE_STATE[caseId] = state;
   refreshCase(caseId);
 
   try {
-    /* Opportunity is NOT called here any more. Its judgment now runs at
-       detection, before Prioritization ranks anything, which is what the
+    /* REPLAY ONLY. The Opportunity agent is never invoked from this function,
+       for any case, by any route -- there is no callVertex(OPPORTUNITY) below
+       this line. Its judgment runs at detection, before Prioritization ranks
+       anything and long before a manager has typed a word, which is what the
        locked Agent loop describes and what the agent's own system prompt
-       assumes ("you produce a candidate for the Prioritization step to
-       rank"). Running it here put it downstream of the component it feeds,
-       and meant the no-candidate branch could fire after the manager had
-       already clicked Recognize.
+       assumes ("you produce a candidate for the Prioritization step to rank").
 
-       For a generated candidate the verdict already exists, so it is replayed
-       into the trace rather than re-asked. For an eval-case fixture there is
-       no prior verdict, so the agent runs once here to keep the graded
-       harness exercising the same call it always did. */
+       A previous pass moved the call to detection for generated candidates but
+       left eval fixtures re-asking it here, mid-flow. That leftover is what
+       produced the "on a second look there is not a real gap" dead end: the
+       manager accepted a nudge, removed a recipient, typed a sentence, pressed
+       generate, and the agent -- looking only at the trigger's first recipient
+       and knowing nothing about any of that -- answered "no" and the whole
+       screen was discarded.
+
+       Two rules now hold this shut. One writer: judgeOpportunity() is the only
+       function that calls the agent and the only one that writes a verdict.
+       One reader: this block, which replays whatever is already stored and
+       treats a "no" as advice rather than a veto. */
     if (evalCase.trigger_type.indexOf("opportunity_") === 0) {
-      const priorKey = candidateKey(evalCase.manager_id, evalCase.trigger_type, evalCase.recipient_ids, "");
-      const prior = OPPORTUNITY_VERDICTS[priorKey];
-      if (prior && !prior.stubbed && prior.parsed) {
-        state.stages.opportunity = { raw: prior.raw, parsed: prior.parsed };
-        state.citations.push("Opportunity signal: " + (prior.parsed.SIGNAL_TYPE || evalCase.trigger_type) + " (judged at detection)");
-      } else if (prior && prior.stubbed) {
-        state.stages.opportunity = { raw: "[STUBBED at detection] " + prior.rationale, parsed: { CANDIDATE: "yes", SIGNAL_TYPE: evalCase.trigger_type, NOTE: prior.rationale } };
+      const verdict = OPPORTUNITY_VERDICTS[opportunityVerdictKey(evalCase)];
+
+      if (!verdict) {
+        /* Every route that can put an opportunity nudge in front of a manager
+           settles the verdict first -- detection for real candidates,
+           ensureOpportunityVerdict() for harness fixtures. Reaching here means
+           a new route was added that skipped both. Say so loudly in the
+           console and carry on: a wiring gap is not the manager's problem, and
+           blocking them is exactly the behaviour being removed. */
+        addLogEntry({
+          caseId: caseId, stage: "invariant",
+          action: "no stored Opportunity verdict for this nudge -- it reached the manager without going through detection. Continuing without one."
+        });
+      } else if (verdict.stubbed) {
+        state.stages.opportunity = { raw: "[STUBBED at detection] " + verdict.rationale, parsed: { CANDIDATE: "yes", SIGNAL_TYPE: evalCase.trigger_type, NOTE: verdict.rationale } };
         state.citations.push("Opportunity signal: " + evalCase.trigger_type + " (threshold only, no endpoint)");
       } else {
-        const oppRaw = await callVertex(SYSTEM_PROMPT_OPPORTUNITY, buildOpportunityUserContent(evalCase));
-        const opp = parseLabeledFields(oppRaw);
-        state.stages.opportunity = { raw: oppRaw, parsed: opp };
-        if (Object.keys(opp).length === 0) {
-          state.status = "ERROR";
-          state.error = "Opportunity agent's output did not match the expected labeled-field format.";
-          addLogEntry({ caseId: caseId, stage: "opportunity", action: "parse failure" });
-          refreshCase(caseId);
-          return;
+        state.stages.opportunity = { raw: verdict.raw, parsed: verdict.parsed };
+        if (verdict.candidate) {
+          state.citations.push("Opportunity signal: " + ((verdict.parsed && verdict.parsed.SIGNAL_TYPE) || evalCase.trigger_type) + " (judged at detection)");
+        } else {
+          /* A "no" that arrives after the manager has engaged is advisory,
+             never a block. The agent gets to say what it thinks; the manager
+             decides. Same principle the rest of this design already follows
+             for thin input, policy blocks and auth failures: state the
+             problem, keep a way forward. */
+          state.advisory = "Looking at the fuller picture, I'm not seeing a clear recognition gap here right now. Still your call — you can send this anyway.";
+          addLogEntry({
+            caseId: caseId, stage: "opportunity",
+            action: "verdict was NO at detection -- shown as advisory, manager keeps control"
+          });
         }
-        if ((opp.CANDIDATE || "").toLowerCase().indexOf("yes") !== 0) {
-          state.status = "NO_CANDIDATE";
-          addLogEntry({ caseId: caseId, stage: "opportunity", action: "no candidate surfaced" });
-          refreshCase(caseId);
-          return;
-        }
-        state.citations.push("Opportunity signal: " + (opp.SIGNAL_TYPE || evalCase.trigger_type));
       }
     }
 
@@ -3156,6 +3377,7 @@ async function runAgentsForCase(caseId) {
       state.status = "ERROR";
       state.error = "Draft generation's output did not match the expected labeled-field format.";
       addLogEntry({ caseId: caseId, stage: "draft", action: "parse failure" });
+      settleAcceptOutcome(evalCase, state);
       refreshCase(caseId);
       return;
     }
@@ -3173,16 +3395,37 @@ async function runAgentsForCase(caseId) {
     state.error = err.message;
     addLogEntry({ caseId: caseId, stage: "agent call", action: "error: " + err.message });
   }
+  settleAcceptOutcome(evalCase, state);
   refreshCase(caseId);
+}
+
+/* Keeps the accept outcome honest about what the run actually produced.
+
+   Called after every run of the chain. If the run left the manager with
+   nothing -- no draft, no screen to work on -- the accept logged when they
+   clicked Recognize is revoked, because nothing was produced and nothing was
+   sent. If a later attempt succeeds, it is re-logged, so a transient outage
+   costs the learning layer nothing rather than costing it a permanent dent.
+
+   Only ERROR qualifies. An abandon is the manager's own decision and has its
+   own outcome; a "no gap" verdict no longer stops anything. */
+function settleAcceptOutcome(evalCase, state) {
+  const produced = state.status !== "ERROR";
+  if (!produced && !state.acceptRevoked) {
+    state.acceptRevoked = revokeNudgeOutcome(evalCase, "accepted");
+  } else if (produced && state.acceptRevoked) {
+    logNudgeOutcome(evalCase, "accepted");
+    state.acceptRevoked = false;
+  }
 }
 
 // Regeneration from the draft screen. Coaching is only useful if it can
 // compound: the manager reads a tip, edits the text, regenerates, and gets
 // a fresh read on the edited version. So the CURRENT draft text becomes the
 // new input, not the original one-liner they first typed.
-// Opportunity is deliberately not re-run; whether a gap exists was settled
-// when the nudge fired, and re-running it could flip to NO_CANDIDATE and
-// destroy work in progress.
+// Opportunity is not re-run here, and no longer can be from anywhere: whether
+// a gap exists is settled once, at detection. See the REPLAY ONLY note in
+// runAgentsForCase for why re-asking it downstream was destructive.
 async function regenerateDraft(caseId) {
   const evalCase = findCase(caseId);
   const state = CASE_STATE[caseId];
@@ -3413,6 +3656,25 @@ async function runAllCases() {
   let ready = 0, noCandidate = 0, errors = 0;
   for (const c of EVAL_CASES) {
     ensureOptInForCase(c);
+
+    /* Detection, stood in for. A fixture never passes through runDay(), so
+       this is where the harness asks Opportunity its one question -- before
+       any compose flow starts, exactly where a real candidate gets asked. A
+       "no" here means the nudge would never have been delivered at all, which
+       is a legitimate graded outcome; what it is not is something a manager
+       can be standing in front of. */
+    const verdict = await ensureOpportunityVerdict(c);
+    if (verdict && !verdict.candidate) {
+      CASE_STATE[c.case_id] = { stages: {}, citations: [], status: "NO_CANDIDATE" };
+      addLogEntry({
+        caseId: c.case_id, stage: "opportunity",
+        action: "NO CANDIDATE at detection -- this nudge would never have been delivered"
+      });
+      refreshCase(c.case_id);
+      noCandidate++;
+      continue;
+    }
+
     await runAgentsForCase(c.case_id);
     const s = CASE_STATE[c.case_id];
     if (s.status === "AWAITING_REVIEW") ready++;
@@ -4683,9 +4945,48 @@ function renderMainPanel() {
      managerInput and currentDraftText are written on every keystroke and
      live on the case, not in the DOM, so the draft is still intact when the
      manager clicks back to Recognition Coach. */
-  if (onboarding.editing || (enabledCount === 0 && !state)) {
+  /* First-run needs BOTH conditions. Zero opt-ins alone was the old test and
+     it could not tell "never set up" from "set everything off"; setup-done
+     alone would trap a manager on the welcome screen after something other
+     than Save enabled a trigger for them (the eval precondition and the dev
+     toggles both do this). Anything enabled means they are past first run
+     whatever route got them there. */
+  if (onboarding.editing || (enabledCount === 0 && !hasCompletedSetup(ACTIVE_MANAGER_ID) && !state)) {
     setPendingNudgeIndicators(false);
     renderOnboardingScreen(container, manager);
+    return;
+  }
+
+  /* Set up, and chose to have nothing on. Distinct from both the first-run
+     screen above and "you're all caught up" below: there is nothing to show
+     because the manager switched it all off, not because the day was quiet.
+     Saying so plainly is the honest version, and it keeps the way back
+     obvious without re-opening a setup flow they just left. */
+  if (enabledCount === 0 && !state) {
+    setPendingNudgeIndicators(false);
+    /* A bot chat is a persistent thread. Nudges that already arrived are part
+       of the manager's history and turning future ones off does not unsend
+       them, so the thread stays and only the forward-looking message changes. */
+    renderThreadHistory(container, ACTIVE_MANAGER_ID, null);
+    renderBoostReminders(container, ACTIVE_MANAGER_ID);
+    const allOff = document.createElement("div");
+    allOff.className = "empty";
+    allOff.innerHTML =
+      '<div class="headline">Your nudges are turned off</div>' +
+      '<p>You won\'t get any recognition reminders until you turn some back on. ' +
+      'You can still start a recognition yourself anytime.</p>';
+    const settingsBtn = document.createElement("button");
+    settingsBtn.className = "btn primary";
+    settingsBtn.textContent = "Turn nudges back on";
+    settingsBtn.addEventListener("click", openManageNudges);
+    allOff.appendChild(settingsBtn);
+    const startBtn = document.createElement("button");
+    startBtn.className = "btn";
+    startBtn.style.marginLeft = "var(--sp-2)";
+    startBtn.textContent = "Start a recognition";
+    startBtn.addEventListener("click", startManualRecognition);
+    allOff.appendChild(startBtn);
+    container.appendChild(allOff);
     return;
   }
 
@@ -4711,6 +5012,28 @@ function renderMainPanel() {
     startBtn.addEventListener("click", startManualRecognition);
     caughtUp.appendChild(startBtn);
     container.appendChild(caughtUp);
+    return;
+  }
+
+  /* Nothing selected, but this manager does have pending work -- the thread
+     is between nudges. Reachable now that the selection is never padded with
+     an eval fixture to keep it non-null: openNudgeIdFor() legitimately
+     returns null for the moment between a setup save and the re-run that
+     produces a candidate. Everything below dereferences evalCase, so this
+     lands on the caught-up screen instead of throwing and blanking the app. */
+  if (!evalCase) {
+    setPendingNudgeIndicators(false);
+    const between = document.createElement("div");
+    between.className = "empty";
+    between.innerHTML =
+      '<div class="headline">Nothing to show right now</div>' +
+      '<p>You\'re all caught up! If you\'d like to create a recognition, just hit Start.</p>';
+    const startBtn = document.createElement("button");
+    startBtn.className = "btn primary";
+    startBtn.textContent = "Start";
+    startBtn.addEventListener("click", startManualRecognition);
+    between.appendChild(startBtn);
+    container.appendChild(between);
     return;
   }
 
@@ -4817,9 +5140,17 @@ function renderMainPanel() {
     return;
   }
 
+  /* Only the graded harness can produce this now, and only before any compose
+     screen exists -- it is the "Opportunity said no at detection, so this
+     nudge would never have been delivered" result, which is a legitimate
+     outcome to grade. It is no longer reachable from a manager's own flow:
+     a "no" that arrives after they have engaged renders as an advisory on
+     the compose card instead, and they keep their work and their choice.
+     The old copy said "on a second look", which described exactly the
+     re-asking that no longer happens. */
   if (state.status === "NO_CANDIDATE") {
     addTeamsMessage(container, "muted", function (card) {
-      card.innerHTML = '<p style="margin:0;">On a second look there is not a real gap here right now. Nothing to send.</p>';
+      card.innerHTML = '<p style="margin:0;">Opportunity looked at this one and did not find a real gap, so it was never sent as a nudge.</p>';
     });
     return;
   }
@@ -4836,6 +5167,21 @@ function renderMainPanel() {
     addTeamsMessage(container, null, function (card) {
       if (hasDraft) buildDraftCard(card, evalCase, manager, state);
       else buildInputCard(card, evalCase, manager, state);
+
+      /* Anything the agents want to say that is NOT a reason to stop the
+         manager goes here: above the compose surface, inside the same card.
+         Above it, because it is context for what they are about to write;
+         inside it, because a second message bubble contradicting the nudge
+         above is precisely the thread this app used to produce.
+
+         Prepended after the builders run, not before -- both of them assign
+         card.innerHTML, which would wipe anything added first. */
+      if (state.advisory) {
+        const note = document.createElement("div");
+        note.className = "advisory-note";
+        note.textContent = state.advisory;
+        card.insertBefore(note, card.firstChild);
+      }
     });
     return;
   }
@@ -4997,6 +5343,7 @@ function toggleOnboardingCard(managerId, key) {
 
 function saveOnboarding(managerId) {
   const state = getOnboardingState(managerId);
+  const wasEditing = state.editing;
   TRIGGER_MENU.forEach(function (entry) {
     if (entry.coming_soon) return;
     setTriggerEnabled(managerId, entry.key, state.selections.indexOf(entry.key) !== -1);
@@ -5022,20 +5369,60 @@ function saveOnboarding(managerId) {
     }
   }
 
+  /* Saving IS the completion signal, including a save with every card
+     unticked. Turning everything off is a legitimate end state, not an
+     abandoned setup, so it must not send the manager back to the welcome
+     screen next render. */
+  markSetupComplete(managerId);
+
   addLogEntry({
     caseId: SELECTED_CASE_ID,
     stage: "onboarding",
-    action: (state.editing ? "updated" : "completed") + " nudge setup for " + findEmployee(managerId).name +
+    action: (wasEditing ? "updated" : "completed") + " nudge setup for " + findEmployee(managerId).name +
       " (" + (state.selections.length ? state.selections.join(", ") : "nothing enabled") + ")"
   });
 
   state.started = false;
   state.editing = false;
+  persistWorld();
 
-  const eligible = eligibleCasesForManager(managerId);
-  const stillOk = eligible.some(function (c) { return c.case_id === SELECTED_CASE_ID; });
-  if (!stillOk && eligible.length) SELECTED_CASE_ID = eligible[0].case_id;
+  /* The thread shows delivered candidates, full stop. It used to jump the
+     selection onto eligibleCasesForManager()[0] as an interim placeholder
+     while the re-run below finished -- and that list is EVAL_CASES, the
+     graded harness's fixtures, which never pass through detection,
+     Prioritization or delivery.
+
+     For the seconds that placeholder was up it was indistinguishable from a
+     real nudge, and it was long enough to accept one, remove a recipient and
+     start typing. That is how a test object ended up mid-flow in front of a
+     manager, which is the root of the "no real gap" dead end. There is no
+     placeholder now: the thread renders whatever it already had (or the
+     caught-up state) until the re-run produces something real. */
   renderConsole();
+
+  /* Re-run today now that the filter has changed. Detection already found
+     these candidates; the opt-in filter was what stopped them reaching the
+     thread, so a newly enabled type has something waiting for it right now.
+     Without this the manager saves, lands on an empty thread, and has to
+     wait for the next simulated day before their choice appears to do
+     anything -- which reads as the save not having worked. */
+  const gen = WORLD_GENERATION;
+  const settle = function () {
+    if (gen !== WORLD_GENERATION) return;
+    if (managerId === ACTIVE_MANAGER_ID) {
+      const open = openNudgeIdFor(managerId);
+      if (open) SELECTED_CASE_ID = open;
+    }
+    persistWorld();
+    renderConsole();
+  };
+  /* Same repair on failure as on success. Without the catch, one rejected
+     detection call left the selection wherever it happened to be and the
+     thread silently stopped updating, with nothing in the console saying so. */
+  runDay(SIM_TODAY).then(settle, function (err) {
+    addLogEntry({ caseId: SIM_TODAY, stage: "prioritization", action: "re-run after setup save failed: " + err.message });
+    settle();
+  });
 }
 
 function renderOnboardingScreen(container, manager) {
@@ -5483,12 +5870,27 @@ function renderOptInPanel() {
         stage: "opt-in filter",
         action: (box.checked ? "ENABLED" : "DISABLED") + ' "' + entry.label + '" for ' + manager.name
       });
-      // A newly-enabled type may be the only thing this manager can see, so
-      // move the selection onto it rather than leaving a filtered-out case up.
-      const eligible = eligibleCasesForManager(ACTIVE_MANAGER_ID);
-      const stillOk = eligible.some(function (c) { return c.case_id === SELECTED_CASE_ID; });
-      if (!stillOk && eligible.length) SELECTED_CASE_ID = eligible[0].case_id;
+      /* No interim jump onto an eval fixture here either -- same reason as
+         the manager-facing Save. The re-run below is what moves the thread,
+         and it only ever moves it onto something Prioritization delivered. */
       refreshCase(SELECTED_CASE_ID);
+      // Same re-run as the manager-facing Save, so the dev toggle and the
+      // Settings tab behave identically rather than the shortcut being the
+      // one that appears not to work.
+      const toggledFor = ACTIVE_MANAGER_ID;
+      const gen = WORLD_GENERATION;
+      const settle = function () {
+        if (gen !== WORLD_GENERATION) return;
+        if (toggledFor === ACTIVE_MANAGER_ID) {
+          const open = openNudgeIdFor(toggledFor);
+          if (open) SELECTED_CASE_ID = open;
+        }
+        renderConsole();
+      };
+      runDay(SIM_TODAY).then(settle, function (err) {
+        addLogEntry({ caseId: SIM_TODAY, stage: "prioritization", action: "re-run after opt-in toggle failed: " + err.message });
+        settle();
+      });
     });
 
     const text = document.createElement("div");
@@ -5531,6 +5933,13 @@ function renderCaseList() {
         (eligible ? "" : '<span class="badge neutral">OPTED OUT</span>') + statusBadge(state);
       row.addEventListener("click", function () {
         SELECTED_CASE_ID = c.case_id;
+        /* Opening a fixture from the dev list is the one route that shows a
+           harness object in the thread on purpose. Settle its verdict now,
+           the same way detection would have, so testing a case exercises the
+           same ordering the manager-facing flow uses -- rather than leaving
+           the question to be asked later, mid-draft, which is the ordering
+           this whole file no longer allows. */
+        ensureOpportunityVerdict(c).then(function () { refreshCase(c.case_id); });
         // Selecting a case implies signing in as its owner, so the chrome and
         // the nudge copy never disagree about whose team this is.
         if (profile.manager_id !== ACTIVE_MANAGER_ID) {
