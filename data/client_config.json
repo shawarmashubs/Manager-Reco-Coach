@@ -1,11 +1,19 @@
 {
   "company_name": "Acme Robotics",
-  "enabled_features": ["hris_milestones", "custom_reminders", "budget_expiry", "opportunity_gaps"],
+  "enabled_features": [
+    "hris_milestones",
+    "custom_reminders",
+    "budget_expiry",
+    "opportunity_gaps"
+  ],
   "recognition_rules": {
     "peer_to_peer_allowed": true,
     "manager_only": false
   },
-  "frequency_cap_baseline": { "count": 2, "days": 3 },
+  "frequency_cap_baseline": {
+    "count": 2,
+    "days": 3
+  },
   "fixed_award_amount": 50,
   "generic_tone_fallback": "Warm, specific, and brief. Name the concrete action and its impact. Avoid generic praise like 'great job' without a detail attached to it.",
   "budget_refresh_date": "2026-09-01",

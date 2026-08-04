@@ -1,4 +1,18 @@
 sender,recipient,text,core_value,monetary_flag,amount,boosted,timestamp,relationship_type
-emp030,emp021,"Jamie closed the Meridian account two weeks early and looped in support before go-live so there were zero surprises.",Ownership,true,50,false,2026-05-12,direct_report
-emp030,emp050,"Alex walked a frustrated customer back from cancelling by digging into the actual root cause instead of just offering a discount.",Customer Obsession,true,50,false,2026-06-03,direct_report
-emp030,emp021,"Jamie mentored the new hire through their first full pipeline review without being asked.",Ownership,false,0,false,2026-07-01,direct_report
+emp030,emp021,Jamie rebuilt the renewal deck the night before the Vantage review and it landed. The customer signed a week later.,Ownership,true,50,false,2025-11-08,direct_report
+emp030,emp050,Alex took the Northwind escalation off my plate entirely and worked it to a clean resolution.,Ownership,true,50,false,2025-11-24,direct_report
+emp030,emp020,Diego kept the Halden deal alive through two rounds of procurement changes without once letting it stall.,Ownership,true,50,false,2025-12-15,direct_report
+emp030,emp021,Jamie caught the pricing error in the Q4 batch before any of it went out.,Craftsmanship,false,0,false,2026-01-09,direct_report
+emp030,emp050,Alex walked a frustrated customer back from cancelling by digging into the actual root cause instead of just offering a discount.,Customer Obsession,true,50,false,2026-02-14,direct_report
+emp030,emp020,Diego picked up the whole mid-market book for three weeks while we were short-staffed and did not drop a single account.,Ownership,true,50,false,2026-03-02,direct_report
+emp030,emp022,Wesley ran the entire onboarding for the two new SDRs and built the ramp plan we are still using.,Ownership,true,50,false,2026-03-19,direct_report
+emp030,emp021,Jamie closed the Meridian account two weeks early and looped in support before go-live so there were zero surprises.,Ownership,true,50,false,2026-04-11,direct_report
+emp030,emp020,Diego turned a lost-cause renewal into a two-year commitment by actually listening to what the customer was worried about.,Customer Obsession,true,50,false,2026-05-06,direct_report
+emp030,emp020,Diego covered the Highline handover at no notice and the customer never knew anything had changed.,Ownership,false,0,false,2026-05-20,direct_report
+emp030,emp021,Jamie mentored the new hire through their first full pipeline review without being asked.,Ownership,false,0,false,2026-06-17,direct_report
+emp030,emp021,Jamie rewrote the discovery script and the whole team is closing better because of it.,Ownership,true,50,false,2026-07-01,direct_report
+emp030,emp020,Diego held the line on scope in the Castellan negotiation instead of discounting to close faster.,Ownership,false,0,false,2026-07-14,direct_report
+emp031,emp055,Owen rebuilt the territory model in a weekend and it is measurably fairer.,Craftsmanship,true,50,false,2026-06-22,direct_report
+emp031,emp055,Owen stepped into the Kepler account mid-cycle and steadied it.,Resilience,true,50,false,2026-07-19,direct_report
+emp040,emp030,Marcus held the Sales floor together through the reorg without letting the team feel it.,Resilience,true,50,false,2026-06-30,direct_report
+emp011,emp005,Theo untangled the deploy pipeline nobody else wanted to touch.,Craftsmanship,true,50,false,2026-07-09,direct_report

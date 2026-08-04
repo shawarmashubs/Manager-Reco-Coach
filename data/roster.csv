@@ -1,9 +1,23 @@
 employee_id,name,email,manager_id,department,title,hire_date,employment_status,last_manager_change_date
 emp099,Jordan Reyes,jordan.reyes@acme-robotics-demo.com,,Executive,CEO,2018-01-01,active,2018-01-01
-emp010,Priya Nair,priya.nair@acme-robotics-demo.com,emp099,Engineering,Engineering Manager,2022-01-15,active,2022-01-15
-emp001,Sam Okafor,sam.okafor@acme-robotics-demo.com,emp010,Engineering,Software Engineer II,2025-03-10,active,2025-03-10
-emp030,Marcus Chen,marcus.chen@acme-robotics-demo.com,emp040,Sales,Sales Manager,2021-04-01,active,2021-04-01
 emp040,Elena Ruiz,elena.ruiz@acme-robotics-demo.com,emp099,Sales,VP of Sales,2019-01-01,active,2019-01-01
+emp030,Marcus Chen,marcus.chen@acme-robotics-demo.com,emp040,Sales,Sales Manager,2021-04-01,active,2021-04-01
+emp031,Farah Haddad,farah.haddad@acme-robotics-demo.com,emp040,Sales,Sales Manager,2022-09-12,active,2022-09-12
+emp032,Luis Moreau,luis.moreau@acme-robotics-demo.com,emp040,Sales,Sales Manager,2020-11-02,active,2020-11-02
 emp020,Diego Fernandez,diego.fernandez@acme-robotics-demo.com,emp030,Sales,Account Executive,2023-06-01,active,2023-06-01
 emp021,Jamie Park,jamie.park@acme-robotics-demo.com,emp030,Sales,Account Executive,2024-02-01,active,2023-06-01
 emp050,Alex Torres,alex.torres@acme-robotics-demo.com,emp030,Sales,Account Executive,2023-01-01,active,2023-06-01
+emp051,Nina Kowalski,nina.kowalski@acme-robotics-demo.com,emp030,Sales,Account Executive,2026-07-05,active,2026-07-05
+emp052,Tobias Lang,tobias.lang@acme-robotics-demo.com,emp030,Sales,Senior Account Executive,2021-08-06,active,2021-08-06
+emp022,Wesley Adeyemi,wesley.adeyemi@acme-robotics-demo.com,emp030,Sales,Sales Team Lead,2022-03-14,active,2026-08-04
+emp053,Rosa Iglesias,rosa.iglesias@acme-robotics-demo.com,emp022,Sales,Sales Development Rep,2026-06-08,active,2026-06-08
+emp054,Kenji Watanabe,kenji.watanabe@acme-robotics-demo.com,emp022,Sales,Sales Development Rep,2025-02-03,active,2025-02-03
+emp055,Owen Brady,owen.brady@acme-robotics-demo.com,emp031,Sales,Account Executive,2024-05-20,active,2024-05-20
+emp041,Grace Lindqvist,grace.lindqvist@acme-robotics-demo.com,emp099,Engineering,VP of Engineering,2019-06-03,active,2019-06-03
+emp010,Priya Nair,priya.nair@acme-robotics-demo.com,emp041,Engineering,Engineering Manager,2022-01-15,active,2022-01-15
+emp011,Raj Patel,raj.patel@acme-robotics-demo.com,emp041,Engineering,Engineering Manager,2021-10-04,active,2021-10-04
+emp001,Sam Okafor,sam.okafor@acme-robotics-demo.com,emp010,Engineering,Software Engineer II,2025-03-10,active,2025-03-10
+emp002,Mei Tanaka,mei.tanaka@acme-robotics-demo.com,emp010,Engineering,Software Engineer III,2023-08-21,active,2023-08-21
+emp003,Oscar Delgado,oscar.delgado@acme-robotics-demo.com,emp010,Engineering,Software Engineer I,2026-07-06,active,2026-07-06
+emp004,Hannah Bergstrom,hannah.bergstrom@acme-robotics-demo.com,emp010,Engineering,Senior Software Engineer,2021-08-12,active,2021-08-12
+emp005,Theo Girard,theo.girard@acme-robotics-demo.com,emp011,Engineering,Software Engineer II,2024-01-08,active,2024-01-08

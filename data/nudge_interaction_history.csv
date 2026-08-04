@@ -1,5 +1,11 @@
 manager_id,trigger_type,outcome,timestamp
+emp030,custom_reminder,accepted,2026-04-06
+emp030,hris_anniversary,dismissed,2026-04-20
 emp030,custom_reminder,accepted,2026-05-10
 emp030,opportunity_recipient_neglect,accepted,2026-06-01
 emp030,hris_anniversary,dismissed,2026-06-15
+emp030,custom_reminder,abandoned,2026-06-24
+emp030,opportunity_recipient_neglect,dismissed,2026-06-29
 emp030,budget_expiry,accepted,2026-07-05
+emp030,custom_reminder,accepted,2026-07-13
+emp030,opportunity_recipient_neglect,accepted,2026-07-22

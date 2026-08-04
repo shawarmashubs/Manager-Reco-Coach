@@ -12,6 +12,8 @@
 !/.gitignore
 !/README.md
 !/index.html
+!/MEASUREMENT.md
+!/TESTING.md
 !/data/
 !/policies/
 
@@ -19,3 +21,5 @@
 .DS_Store
 *.env
 .env.*
+!/MEASUREMENT.md
+!/TESTING.md

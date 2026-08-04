@@ -51,8 +51,8 @@ signal crosses threshold
         ↓
   Draft screen        ── edit, set core value, confirm
         ↓
-  Submission gate     ── policy check (AI); auth, eligibility,
-        ↓                budget (deterministic)
+  Submission gate     ── policy check (AI); auth, recipient
+        ↓                validity, budget (deterministic)
   Published
 ```
 
@@ -62,15 +62,34 @@ signal crosses threshold
 
 One static `index.html`. No build, no backend, no dependencies.
 
-**Stubbed by default.** Open the file. Every AI call returns a canned response labeled `[STUBBED]` in the console rather than silently faked, and the whole flow is walkable.
+**Bring your own model.** This is the intended way to run it. Open the panel at the top, choose a provider, paste your key, and name the model you want. Four provider types are wired in:
 
-**Live.** Connect your own Vertex AI project in the panel at the top: project ID, location, model, and an access token from `gcloud auth print-access-token`. Credentials stay in your browser's `localStorage` and post only to Google. Tokens expire hourly. No key is committed here, and none should be.
+| Provider | What you enter |
+|---|---|
+| Google Gemini | API key, model name |
+| Anthropic (Claude) | API key, model name |
+| OpenAI-compatible | Base URL, API key, model name |
+| Google Vertex AI | Project ID, location, model name, access token |
+
+**Use the OpenAI-compatible option for anything not listed.** That name refers to a request format, not a company — it is the de-facto standard most providers implement, so it covers hosted services and locally-run open-source models alike. Point it at the provider's base URL and it works. If you run a model on your own machine, download this project and open the file locally: a browser will not let a page served over HTTPS call an address on `localhost`.
+
+**Model names are examples, not requirements.** Every model box is free text and ships with a name that worked at the time of writing. Model names change constantly, so if a call fails with "model not found," replace it with whatever your own account has access to. Nothing else needs changing.
+
+**No key needed to look around.** With nothing connected, the whole flow still runs on a handful of pre-written answers so you can click through end to end. Each one is labelled `DEMO MODE` in the panel on the left rather than passed off as real output. This is a fallback for browsing, not the way to evaluate the agents — connect a model for that.
+
+Keys live in your browser's local storage and post directly to whichever provider you picked. Nothing routes through a server, and no key is committed to this repo. Each provider's settings are stored separately, so filling in a second one does not erase the first.
 
 **A run has a clock.** Nothing in the thread is placed by hand. Each simulated day runs detect, score, deliver, and the panel steps one day at a time so a cycle is watchable. State survives a reload in `localStorage`, so opt-ins, budget, delivered nudges and outcomes accumulate over a multi-day run. Reset returns to day one.
 
 **Two manager profiles**, switched from the Teams avatar: one who's never opened setup, one four months in with everything on. Same engine, different history, which is what makes the acceptance-weight cold-start gate and the adaptive frequency cap visible.
 
-The right panel exposes the machinery: the score breakdown behind each ranking, the voice examples feeding each draft, a run log, and an eval runner. Showing *why* a nudge surfaced is the point of the prototype.
+The right panel exposes the machinery: the score breakdown behind each ranking, the voice examples feeding each draft, a run log, and the test harness. Showing *why* a nudge surfaced is the point of the prototype.
+
+**The AI is graded, not assumed.** Two sets of tests run against whatever model you connect. One sends fixed inputs to each AI step on its own, with a known right answer, so a failure points at a component. The other drives the whole chain — accept, type, generate, edit, send, submission gate — because four steps can each be correct and still be wired together wrong.
+
+Half the policy-check cases are messages it must *not* block. Without those, a component that refuses everything scores perfectly, and over-blocking is the failure a manager actually feels. Results are two numbers side by side, never one: what it correctly caught, and what it wrongly caught. Cases are run three times, since one pass from a model means it worked once, and a case that answers differently across runs is flagged as unreliable rather than counted either way. With no model connected the tests refuse to run instead of grading canned text.
+
+Every model call, check and interaction is written to a permanent record, including you just clicking around. It survives a reload and survives Reset, and exports to a file.
 
 `data/` holds the synthetic roster, recognition and nudge logs, scoring config, benchmarks, and eval cases. `policies/` holds the guidelines that draft generation and the policy check both read.
 
@@ -111,6 +130,14 @@ It still adapts. Acceptance weight is a moving average per trigger type, skipped
 The north star is recognitions sent by opted-in managers who'd fallen behind, against a top-quartile benchmark frozen at launch, compared to a matched control group who didn't opt in. Opt-out rate is the guardrail. Top-band rejection rate is the calibration check.
 
 Scope, metric definitions, and the event-level instrumentation plan are in **[MEASUREMENT.md](MEASUREMENT.md)**.
+
+---
+
+## How I tested it
+
+Two models, 39 test cases, run against live Gemini. Both models scored identically on every case, and the cheaper one costs about 20 times less to run.
+
+The full record is in **[TESTING.md](TESTING.md)**: what was tested, what passed, what failed and got fixed, the token and cost comparison, and what testing still cannot tell you.
 
 ---
 
