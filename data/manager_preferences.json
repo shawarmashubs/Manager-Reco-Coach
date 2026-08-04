@@ -1,8 +1,10 @@
 {
   "_note": "Keys are the manager-facing opt-in menu (Target workflow step 1), not the 8-value trigger_type taxonomy used by nudge_interaction_history.csv. index.html's TRIGGER_MENU maps one onto the other. This file previously mixed both granularities.",
   "_menu_keys": ["custom_reminders", "hris_milestones", "budget_expiry", "recognition_gaps", "third_party"],
-  "emp010": { "enabled_triggers": [] },
+  "_setup_complete_note": "setup_complete is tracked separately from enabled_triggers on purpose. An empty enabled_triggers list means two different things depending on this flag: false is a manager who has never opened setup and gets the welcome screen, true is a manager who turned everything off and gets told so. Counting enabled triggers cannot tell them apart, and opt-out rate depends on the difference.",
+  "emp010": { "setup_complete": false, "enabled_triggers": [] },
   "emp030": {
+    "setup_complete": true,
     "enabled_triggers": [
       "custom_reminders",
       "hris_milestones",
