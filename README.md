@@ -24,6 +24,8 @@ A bot in the manager's chat client watches structured platform data, decides whe
 
 **Setup, once.** The manager picks which triggers to turn on: HRIS milestones, budget expiry, custom reminders, and gaps the Opportunity agent finds. Nothing fires that they didn't choose, and there's no cadence to configure, since pacing is handled downstream.
 
+The same screen is the Settings tab afterwards, pre-filled with what's live. Turning everything off is a supported end state, kept distinct from never having set up: the first case says so plainly and leaves a route back, the second gets the welcome. A saved change takes effect on the current day rather than the next one, since the candidates were already detected and the opt-in filter was the only thing holding them.
+
 Then three surfaces, each reviewable in under a minute:
 
 **Nudge card.** One concrete line on why this surfaced. *"Alex hasn't been recognized in three months."* Accept or dismiss, nothing else.
@@ -63,6 +65,10 @@ One static `index.html`. No build, no backend, no dependencies.
 **Stubbed by default.** Open the file. Every AI call returns a canned response labeled `[STUBBED]` in the console rather than silently faked, and the whole flow is walkable.
 
 **Live.** Connect your own Vertex AI project in the panel at the top: project ID, location, model, and an access token from `gcloud auth print-access-token`. Credentials stay in your browser's `localStorage` and post only to Google. Tokens expire hourly. No key is committed here, and none should be.
+
+**A run has a clock.** Nothing in the thread is placed by hand. Each simulated day runs detect, score, deliver, and the panel steps one day at a time so a cycle is watchable. State survives a reload in `localStorage`, so opt-ins, budget, delivered nudges and outcomes accumulate over a multi-day run. Reset returns to day one.
+
+**Two manager profiles**, switched from the Teams avatar: one who's never opened setup, one four months in with everything on. Same engine, different history, which is what makes the acceptance-weight cold-start gate and the adaptive frequency cap visible.
 
 The right panel exposes the machinery: the score breakdown behind each ranking, the voice examples feeding each draft, a run log, and an eval runner. Showing *why* a nudge surfaced is the point of the prototype.
 
@@ -111,9 +117,9 @@ Scope, metric definitions, and the event-level instrumentation plan are in **[ME
 ## What's not built
 
 - Two paths run end to end: a new manager on a custom reminder, an experienced one on a detected gap. Five design-plan cases are out of scope, including penalty override, multi-recipient partial failure, and thin-input branching.
-- Auth is a pass/fail stub. Budget is in-memory and resets on reload.
+- Auth is a pass/fail stub.
 - Opportunity detects three known signal types. Open-ended pattern discovery was cut, since a hand-authored dataset can't hide patterns nobody planted.
-- Nothing persists between sessions. "A manager who's used this for months" is fixture data.
+- Persistence is `localStorage`, not a backend. A run accumulates across reloads (clock, opt-ins, budget, candidates, outcomes) so multi-day behaviour is observable, but it's one browser and Reset wipes it. "A manager who's used this for months" is still fixture data underneath.
 - The scoring constants are starting guesses. They sit in readable config, and top-band rejection rate is how you find out they're wrong.
 
 ---
