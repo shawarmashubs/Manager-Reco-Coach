@@ -121,7 +121,7 @@ It still adapts. Acceptance weight is a moving average per trigger type, skipped
 
 **No escalation.** A blocked recognition returns a reason and a rewrite to the manager. No admin, HR, or leadership ever sees a manager's nudge activity.
 
-**Never a dead end.** Empty budget downgrades to non-monetary and offers a reminder. Expired auth retries once, then hands over a manual link. A failed policy check highlights exactly what to change.
+**Never a dead end.** Empty budget downgrades to non-monetary and offers a reminder. Expired auth retries once, then hands over a manual link. A failed policy check stops user from proceeding and asks them to remove such language without judgement.
 
 ---
 

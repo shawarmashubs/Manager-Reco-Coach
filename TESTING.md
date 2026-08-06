@@ -84,18 +84,24 @@ One caution. The model name should be pinned, not left as an alias like `gemini-
 
 ### Four AI steps, one at a time
 
-32 cases. Each has a fixed input and a right answer known in advance. Each runs three times, because a model can get something right once by luck.
+34 cases. Each has a fixed input and a right answer known in advance. Each runs three times, because a model can get something right once by luck.
 
 - **Opportunity, 6 cases.** Does it spot a real recognition gap, and does it leave alone someone who was recognised recently? Does it ever invent a benchmark figure? Does an instruction hidden in the data change its answer?
 - **Style and tone, 5 cases.** With one recipient the manager has history with and one they don't, does it use real examples for the first and a generic fallback for the second? Does it ever invent a past recognition?
-- **Draft, 10 cases.** Does Coaching mode behave differently from Clean-up mode? Does it invent numbers? Does it name people who aren't receiving the recognition? Does it stay two to four sentences?
+- **Draft, 12 cases.** Does Coaching mode behave differently from Clean-up mode? Does it invent numbers? Does it name people who aren't receiving the recognition? Is the length in proportion to what the manager gave it, four sentences on a rich input, one on a bare thank-you, and one per relationship group when several people are named at once?
 - **Policy check, 11 cases.** Six messages it must block and five it must not.
+
+Two of the Draft cases were added on 2026-08-06, both about length, and the second exists because the first was not enough.
+
+Length had only ever been checked at one end: a rich input had to stay under four sentences, and nothing checked the other end, which is where it broke. Given "thanks tobias" the draft came back at two sentences and 22 words, inventing an ongoing pattern of hard work and support for the team out of a bare thank-you.
+
+The fix for that held for one recipient and fell over on a list of them. Given "thanks Elena, Diego, and Hannah, Oscar, Mei, and all" the draft produced 38 words, invented three things nobody had said, sorted the recipients into groups matching no actual relationship, and addressed three people as "both". The count of names was being read as a count of things worth saying. The second case pins that down: five names across two relationship groups, nothing said about any of them, and it must come back as two short sentences with everyone still named.
 
 **Half the policy cases are messages it must allow.** Without those, a checker that blocks everything scores full marks. Over-blocking is the failure a manager actually feels, because a warm harmless message getting refused is what makes someone stop using the tool.
 
 ### The whole flow, end to end
 
-7 paths. Each one accepts a nudge, types, generates, edits, sends, and goes through the submission gate. Driven through the same code a real click drives.
+14 paths. Each one accepts a nudge, types, generates, edits, sends, and goes through the submission gate. Driven through the same code a real click drives.
 
 - A clean send publishes with a core value recorded.
 - A manager approves a clean draft, then types something hostile into it before sending. **The gate must catch the edit, not the draft it was handed.** This is only testable end to end.
@@ -103,7 +109,19 @@ One caution. The model name should be pinned, not left as an alias like `gemini-
 - Budget running out downgrades the recognition instead of blocking it.
 - A failed sign-in keeps the draft.
 - One invalid recipient blocks only that person.
+- Two invalid recipients are reported together, not one per attempt.
+- A departed recipient comes off the list and the recognition still reaches whoever is left.
+- Hostile wording and a departed recipient on the same recognition arrive on one screen, not one per Send press.
+- A manager who types only a name gets a question, and their typing stays in the box.
 - A recognition sent to a direct report and to the manager's own boss uses a different tone for each.
+
+Added 2026-08-06, after clicking around found four defects nothing here covered:
+
+- **Hostile wording typed into the first box.** The two existing policy paths both put the bad text in further downstream, so neither drove what a person actually does. Doing that handed the manager their own sentence back as a suggested recognition with a thank-you in front of it, ready to send.
+- **Hostile wording mixed with something real.** The opposite failure. Refusing the whole message loses work the manager did; keeping it publishes the part that has to go. The draft keeps one, drops the other, and reaches Send on its own.
+- **The rewrite pencil pressed twice with nothing changed.** The previous draft was being fed back in as though the manager had written it, so each press rewrote a rewrite rather than the manager's own sentence.
+
+The two-model comparison above was run against the suite as it stood before these three were added.
 
 ### Everything else
 
@@ -147,6 +165,21 @@ Replaced with a check that counts. It strips out small words, strips anything th
 - Three of the app's own status rules were wrong and flagged correct behaviour as broken.
 - The deployed page showed a setup form and nothing else, with 17 nudges waiting behind a screen nobody could get past.
 
+### Found by clicking around, 2026-08-06
+
+None of these were caught by the test suite, because every path it drove put hostile text in *after* the draft step. A person typing it into the first box found all of them in about ten minutes.
+
+- **The draft handed the manager's own abuse back to them.** Typing "get lost, you're too old" produced a suggested recognition reading `Thank you for this. "Get lost Hannah. You're too old."`, ready to send. Nothing checks the manager's wording before drafting, by design, since the policy check is meant to be the only gate. But the draft agent's instructions never mentioned hostile input at all, so it had no reason to refuse. It now reads the same C1 to C4 rules as the submission gate, drafts only from whatever part of the message is publishable, and asks what the person actually did when none of it is. Deliberately not a generic "thank you for your work": that is sendable, so it would hand the manager a recognition to send to the person they just wrote that about.
+- **The draft compounded on every rewrite press.** Pressing the pencil replaced the manager's typed input with the current draft, whether or not they had edited it. Five presses produced five stacked copies of the same opening phrase. The swap now happens only when the text actually changed, so an unchanged press asks for a fresh attempt at the same sentence. The Clean-up drift check had been silently measuring against this moving target, so it passed on exactly the runs that were breaking.
+- **The submission gate read a truncated message.** With no model connected, the check pulled the text out of its prompt with a pattern that stopped at the first double quote. Any recognition containing a quotation mark was cut off before the check saw it. The reported message was `Thank you for this. "Get lost..."`, so the check read four harmless words and passed it.
+- **The gate's stand-in matched one literal sentence.** It tested for `not miss working with you` and passed everything else, which is the same sentence one fixture uses. That case passed by construction while plain abuse published. Replaced with a rule table organised by the same four compliance sections, shared with the draft step so the two cannot disagree about what is publishable.
+- **The quote marks were the app's own.** The prompt wraps the manager's text in quotes as formatting, and the stand-in was capturing the wrapper along with the text. That is why the compounding showed nested quotes piling up.
+- **The watchdog on the policy check had a hole.** A separate list of seven phrases watches what the gate lets through. "Get lost" and "you're too old" were on neither, so when that message published the watchdog recognised nothing and the panel row stayed grey, which reads as "not tested yet". It now reads the same shared rule table, so there is one list instead of two.
+- **Test runs were leaking into the manager's real record.** Publishing saves to browser storage immediately. The end-to-end harness undid each scenario in memory and never saved, so on the next page load those test recognitions came back as part of the manager's genuine history. It also switched trigger types on for a manager and never switched them back. Both are now included in the rollback, and the rollback writes to storage.
+- **The run log recorded the agents and almost nothing about the person.** A bug found by clicking around could not be reconstructed afterwards. Every interaction is now logged and tagged, including which mode was picked, which pencil was pressed and whether anything had been edited first.
+- **Coaching mode padded two words into twenty-two.** Typing "thanks tobias" produced "Tobias, thank you for all your hard work lately. I really appreciate the effort you've been putting in to support the team." The manager never mentioned a team, effort, or anything ongoing. The cause was the writing guideline itself: W2 read "two to four sentences", which is a floor as well as a ceiling, so a two-word input got padded up to meet it. W2 now reads as a ceiling that only a rich input earns, with length following the number of distinct things the manager actually said. Coaching mode is still allowed to add phrasing around the manager's words. What it may not do is reach a length by inventing content.
+- **The same padding came back as soon as several people were named, and the fix had to change shape.** "thanks Elena, Diego, and Hannah, Oscar, Mei, and all" produced 38 words. Two rules were pulling against each other. W3 requires a different register per relationship type, so a mixed group cannot be one sentence, while the new W2 said a thin input is worth one sentence. W3 won, and the model then read five names as five things worth saying. W2 now takes its floor from the number of relationship groups rather than from a flat count, states plainly that names never add length, and caps at four groups by combining the two closest registers. Separately, the model had been left to sort the recipients into groups itself and got it wrong, producing sets that matched no real relationship and calling three people "both". Grouping is a lookup rather than a judgment, so the app now works the groups out and hands them over in the prompt.
+
 ### Bugs in the tests themselves
 
 Worth listing, because a test that fails correct behaviour is as damaging as no test.
@@ -175,6 +208,8 @@ The evaluation panel used to have a Pass or Fail dropdown that a person set by h
 - Everything runs on a small made-up dataset. Real use would produce inputs this data does not contain.
 - The tests only check rules the instructions actually state. They cannot find a rule nobody wrote down. That is exactly how the Clean-up problem stayed hidden.
 - Model prices are copied by hand from Google's pricing page and will go out of date.
+- No graded Draft case hands that step something it must refuse to repeat. They all use publishable text. The refuse-to-repeat rule added on 2026-08-06 is proven by the end-to-end paths and not by the Draft step's own twelve cases.
+- Two known defects are diagnosed and deliberately not fixed. The Opportunity agent is asked the same question five or six times per person, because its cache only records an answer after the model replies and the daily detection pass has a re-entry guard on one of its callers rather than on itself. Separately, the end-to-end results label every passing row "Sent:", including the two where the gate correctly refused and nothing went out.
 
 ---
 
