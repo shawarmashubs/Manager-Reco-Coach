@@ -7,14 +7,13 @@ Recognition platforms let people send public thank-yous at work, usually with po
 ---
 
 ## TLDR; video intro
-<div style="position: relative; padding-bottom: 41.66666666666667%; height: 0;">
-  <iframe src="https://www.loom.com/embed/d240c6260d10400cbcd3695acfdecc6a"
-    frameborder="0"
-    webkitallowfullscreen
-    mozallowfullscreen
-    allowfullscreen
-    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
-  </iframe>
+<div>
+<a href="https://www.loom.com/share/d240c6260d10400cbcd3695acfdecc6a">
+<p>Beacon: How to use - Watch Video</p>
+</a>
+<a href="https://www.loom.com/share/d240c6260d10400cbcd3695acfdecc6a">
+<img width="300" alt="Beacon demo video" src="https://cdn.loom.com/sessions/thumbnails/d240c6260d10400cbcd3695acfdecc6a-9ebf21a1056e9a49-full-play.gif">
+</a>
 </div>
 
 ---
