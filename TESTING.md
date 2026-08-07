@@ -128,6 +128,8 @@ The two-model comparison above was run against the suite as it stood before thes
 - **15 live checks** run whenever anyone uses the prototype, not only during a test.
 - **7 system rules** watch for broken promises, for example that the nudge on screen is the highest-ranked one waiting.
 - **139 automated checks** across four scripts.
+- **414 browser checks** across eleven suites, run in headless Chrome against the real page rather than against copies of its logic. `reference-files-github-ignore/ui-probes/run-all.sh`.
+- **A mutation test** over the guardrails suite. Each fix is reverted one at a time in a throwaway copy and the suite is re-run; anything that stays green is not testing the fix it claims to. Two blind spots were found and closed this way, one of which was a probe grading its own reimplementation of the code instead of the code.
 - **A soak test** that plays 20 to 30 simulated days for both manager profiles, taking every action a user can take, with the policy gate rigged to reject every third submission.
 - **A permanent log** of every model call, check and interaction, including someone just clicking around. It survives a page reload and survives a reset, so wiping the demo data does not destroy the evidence.
 
